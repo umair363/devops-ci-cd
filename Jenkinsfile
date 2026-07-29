@@ -39,7 +39,7 @@ pipeline {
                 // Give Nginx ownership of the files and restart services to apply changes
                 sh "sudo chown -R www-data:www-data ${APP_DIR}"
                 sh "sudo chmod -R 775 ${APP_DIR}/storage ${APP_DIR}/bootstrap/cache"
-                sh "sudo systemctl restart nginx php8.2-fpm"
+                sh "sudo systemctl restart nginx php8.3-fpm"
             }
         }
     }
