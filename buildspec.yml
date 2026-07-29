@@ -1,0 +1,18 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      php: 8.2
+    commands:
+      - echo "Installing Composer dependencies..."
+      - composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+  build:
+    commands:
+      - echo "Building frontend assets..."
+      - npm install
+      - npm run build
+artifacts:
+  files:
+    - '**/*'
+  name: LaravelApp
