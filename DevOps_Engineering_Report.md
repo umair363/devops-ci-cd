@@ -1,7 +1,7 @@
 # 🚀 Comprehensive DevOps Engineering & CI/CD Deployment Report
 
 ## 1. Project Overview & The "Mechanical" Pivot
-**Objective:** Deploy a modern Laravel application to AWS using a fully automated CI/CD pipeline, demonstrating mastery over cloud infrastructure and Linux administration.
+**Objective:** Deploy a modern 3-Tier Laravel application to AWS using a fully automated CI/CD pipeline, demonstrating mastery over cloud infrastructure, Linux administration, and network security.
 
 **The Initial Plan vs. The Pivot:**
 Initially, the architecture was designed to use AWS CodePipeline and AWS CodeDeploy. Trust policies (`trust-policy.json`), `appspec.yml` lifecycle hooks, and bash scripts (`start_server.sh`, `install_dependencies.sh`) were explicitly written to handle this. 
@@ -10,7 +10,7 @@ However, due to strict AWS Free Tier account provisioning limitations that block
 ---
 
 ## 2. Phase 1: AWS Infrastructure Provisioning
-We began by establishing the foundational cloud hardware and network security.
+We began by establishing the foundational cloud hardware and network security for the **Compute Tier**.
 
 *   **Compute:** Launched an AWS EC2 `t3.micro` instance running Ubuntu 24.04 LTS (Noble) in the `eu-north-1` region.
 *   **Security Groups (Firewall):** Created `Laravel-Web-SG` and explicitly punched holes for:
@@ -58,16 +58,22 @@ We authored a Declarative `Jenkinsfile` stored directly in GitHub to automate th
 
 ---
 
-## 7. Phase 6: Database Finalization
-After Jenkins successfully deployed the application, visiting the server IP resulted in a Laravel `500 Internal Server Error`.
+## 7. Phase 6: Completing the 3-Tier Architecture (RDS & S3)
+To fully satisfy the enterprise 3-tier architecture requirements, we successfully decoupled the database and storage from the EC2 compute instance.
 
-*   **Problem 4: Missing Database & Driver:** Laravel reported `Database file at path [/var/www/laravel/database/database.sqlite] does not exist`. After creating the file mechanically, `php artisan migrate` failed with `could not find driver`.
-    *   *Diagnosis:* Laravel 13 defaults to SQLite, but we hadn't installed the SQLite PHP extension (only MySQL).
-    *   *Fix:* We ran `sudo touch` to create the database, changed ownership to `www-data`, installed `php8.3-sqlite3`, restarted the PHP-FPM daemon, and successfully executed the migrations.
+### A. Database Tier (AWS RDS MySQL)
+*   **Provisioning:** Spun up an AWS RDS `db.t3.micro` instance running MySQL 8.
+*   **Security:** Enforced strict firewall rules by ensuring the RDS instance was **not publicly accessible**. We created a dedicated Security Group (`RDS-Laravel-SG`) and explicitly whitelisted inbound port 3306 TCP traffic *only* from the EC2 `Laravel-Web-SG`.
+*   **Migration:** Mechanically injected the RDS Endpoint, Database Name, and strict credentials into the `/var/www/laravel/.env` file using `sed`, authenticated into RDS via `mysql-client` to create the schema, and successfully ran `php artisan migrate:fresh --force`.
+
+### B. Object Storage Tier (AWS S3)
+*   **Provisioning:** Created a secure Amazon S3 bucket (`laravel-app-storage`) with all public access strictly blocked.
+*   **IAM Integration:** Instead of hardcoding AWS access keys inside the application (which is a massive security risk), we utilized the EC2 instance's IAM Role (`EC2-CodeDeploy-Role`). We attached the `AmazonS3FullAccess` policy directly to the role, granting the EC2 server inherent mechanical permission to interact with the bucket.
+*   **Configuration:** Updated the Laravel `.env` to route all filesystem uploads natively to the `s3` disk, utilizing the `league/flysystem-aws-s3-v3` library.
 
 ---
 
 ## 8. Conclusion
-We successfully delivered a highly robust, production-ready environment. The application is live, Nginx is reverse-proxying traffic perfectly to the PHP 8.3 FPM socket, and every push to GitHub triggers an automated Jenkins pipeline that handles dependencies, permissions, and daemon recycling without human intervention. 
+We successfully delivered a highly robust, production-ready 3-tier environment. The application compute is decoupled from state (RDS) and storage (S3), Nginx is reverse-proxying traffic perfectly to the PHP 8.3 FPM socket, and every push to GitHub triggers an automated Jenkins pipeline that handles dependencies, permissions, and daemon recycling without human intervention. 
 
-By manually resolving GPG keys, JVM crashes, PHP versioning mismatches, and SQLite driver dependencies, this project thoroughly demonstrates deep technical ownership over Linux systems administration and Cloud DevOps mechanics.
+By manually resolving GPG keys, JVM crashes, PHP versioning mismatches, and meticulously constructing a secure AWS VPC topology, this project thoroughly demonstrates deep technical ownership over Cloud DevOps mechanics.
