@@ -1,43 +1,73 @@
-# DevOps CI/CD Engineering Report: Jenkins Migration & AWS Deployment
+# 🚀 Comprehensive DevOps Engineering & CI/CD Deployment Report
 
-## 1. Executive Summary
-This document outlines the deployment of a robust, automated CI/CD pipeline for a Laravel web application on an AWS EC2 instance. Due to IAM and service provisioning limitations encountered with AWS CodeDeploy, the architecture was successfully pivoted to a self-hosted Jenkins engine. This demonstrates adaptability and a deep mechanical understanding of Linux systems administration, web server configuration, and automation.
+## 1. Project Overview & The "Mechanical" Pivot
+**Objective:** Deploy a modern Laravel application to AWS using a fully automated CI/CD pipeline, demonstrating mastery over cloud infrastructure and Linux administration.
 
-## 2. Infrastructure Architecture
-*   **Compute Engine:** AWS EC2 (`t3.micro`)
-*   **Operating System:** Ubuntu 24.04 LTS (Noble)
-*   **Web Server / Reverse Proxy:** Nginx
-*   **Application Runtime:** PHP 8.3 (FPM)
-*   **CI/CD Engine:** Jenkins 2.568.1 (Self-hosted on EC2)
-*   **Database:** SQLite (Configured for immediate deployment; MySQL/RDS drivers pre-installed for future tiering)
-*   **Security:** AWS Security Groups restricting access (Ports 22, 80, 8080) and strict `sudoers` configurations.
+**The Initial Plan vs. The Pivot:**
+Initially, the architecture was designed to use AWS CodePipeline and AWS CodeDeploy. Trust policies (`trust-policy.json`), `appspec.yml` lifecycle hooks, and bash scripts (`start_server.sh`, `install_dependencies.sh`) were explicitly written to handle this. 
+However, due to strict AWS Free Tier account provisioning limitations that blocked the creation of CodeDeploy applications, we executed a **Senior DevOps Pivot**. We abandoned the managed AWS abstractions and mechanically built a self-hosted Jenkins CI/CD engine directly on the EC2 target server. This approach required a significantly deeper understanding of Linux systems, networking, and daemon management.
 
-## 3. The Jenkins Pivot: CI/CD Pipeline as Code
-Instead of relying on abstracted AWS CodeDeploy agents, Jenkins was installed directly on the deployment target. This required configuring the `jenkins` user with specific `NOPASSWD` sudo privileges to allow automated interaction with system services without compromising root security.
+---
 
-**The Pipeline (Jenkinsfile):**
-1.  **Checkout:** Fetches the latest code from the `main` branch on GitHub.
-2.  **Dependencies:** Executes `composer install --no-dev` to resolve PHP packages.
-3.  **Deployment:** Copies the built artifact directly to the Nginx web root (`/var/www/laravel`).
-4.  **Web Server Configuration:** Automatically moves the `laravel.conf` reverse proxy configuration into `/etc/nginx/sites-available` and symlinks it to `sites-enabled`.
-5.  **Service Management:** Reapplies strict `www-data` ownership to prevent permission hijacking and restarts the `nginx` and `php8.3-fpm` systemd daemons.
+## 2. Phase 1: AWS Infrastructure Provisioning
+We began by establishing the foundational cloud hardware and network security.
 
-## 4. Engineering Mechanics & Troubleshooting
+*   **Compute:** Launched an AWS EC2 `t3.micro` instance running Ubuntu 24.04 LTS (Noble) in the `eu-north-1` region.
+*   **Security Groups (Firewall):** Created `Laravel-Web-SG` and explicitly punched holes for:
+    *   `Port 22 (SSH)`: For mechanical server administration.
+    *   `Port 80 (HTTP)`: For public web traffic to the Laravel application.
+    *   `Port 8080 (Custom TCP)`: For accessing the Jenkins CI/CD web dashboard.
+*   **SSH Key Mechanics:** Encountered the classic Windows `UNPROTECTED PRIVATE KEY FILE` error. We used Windows `icacls` to strip inherited permissions and grant explicit read-only access to `key.pem`, securing the SSH tunnel.
 
-### A. Java Engine Compatibility (Jenkins)
-During the Jenkins installation, `systemd` continuously crashed the Jenkins service. 
-*   **Diagnosis:** Log analysis via `journalctl -xeu jenkins.service` revealed a JVM crash. Jenkins recently deprecated Java 17 support, demanding Java 21.
-*   **Resolution:** Installed `openjdk-21-jre`, verified the path via `update-alternatives`, and flushed the systemd failed state (`systemctl reset-failed`) to restore the service.
+---
 
-### B. Outdated PHP Runtime (Laravel 13)
-The initial pipeline build failed during the Composer dependency resolution phase.
-*   **Diagnosis:** Jenkins console output indicated that `laravel/framework ^13.8` requires PHP 8.3, but the server was running PHP 8.2.
-*   **Resolution:** Executed a full upgrade to PHP 8.3 (FPM and CLI), updated the `fastcgi_pass` socket in the Nginx configuration, and utilized `update-alternatives` to switch the CLI default, allowing Composer to build successfully.
+## 3. Phase 2: Linux Administration & Memory Management
+A `t3.micro` instance only has 1GB of RAM. Running a web server, a PHP engine, and a Java-based Jenkins CI/CD server simultaneously will trigger the Linux Out-Of-Memory (OOM) killer.
+*   **The Fix:** We manually carved out a 2GB Swap file on the SSD using `fallocate -l 2G /swapfile`, locked its permissions with `chmod 600`, formatted it with `mkswap`, and activated it with `swapon`. This provided the system with virtual memory, preventing catastrophic crashes during heavy Jenkins builds.
 
-### C. Database Driver Mismatch
-Post-deployment, the Laravel application threw a `500 Internal Server Error` due to a missing SQLite database file and a subsequent `could not find driver` exception.
-*   **Diagnosis:** While `php8.3-mysql` was installed for RDS compatibility, the local SQLite engine lacked its PHP interface.
-*   **Resolution:** Mechanically touched the `database.sqlite` file, assigned `www-data` ownership, installed the `php8.3-sqlite3` extension, restarted the FPM daemon, and successfully forced the Artisan database migrations.
+---
 
-## 5. Conclusion
-The environment is now a fully automated, production-standard delivery pipeline. Pushing code to GitHub triggers Jenkins to securely deploy the Laravel application and recycle the necessary Linux daemons entirely hands-free.
+## 4. Phase 3: The Jenkins CI/CD Installation & Troubleshooting
+Installing Jenkins required navigating complex package manager and runtime issues.
+
+*   **Problem 1: GPG Key Mismatch:** The Jenkins repository threw a `NO_PUBKEY 7198F4B714ABFC68` error. We bypassed this by manually fetching the GPG key, exporting it into an armored format, and teeing it into `/usr/share/keyrings/jenkins-keyring.asc` to satisfy `apt` security requirements.
+*   **Problem 2: JVM Crash & Java 21 Requirement:** After installation, `systemctl start jenkins` immediately crashed.
+    *   *Diagnosis:* `journalctl -xeu jenkins.service` revealed that Jenkins recently deprecated Java 17 and now explicitly requires Java 21. 
+    *   *Fix:* We installed `openjdk-21-jre`, used `update-alternatives --config java` to verify the default engine, and ran `systemctl reset-failed jenkins` to clear the timeout lock before successfully restarting the daemon.
+*   **Sudoers Configuration:** Because Jenkins runs as the restricted `jenkins` user, it lacks permissions to deploy code to `/var/www` or restart Nginx. We mechanically injected `jenkins ALL=(ALL) NOPASSWD: ALL` into `/etc/sudoers.d/jenkins` to grant it pipeline execution rights.
+
+---
+
+## 5. Phase 4: Web Server & Engine Provisioning
+Because we bypassed AWS CodeDeploy, the bash scripts we originally wrote to install the web server were never executed. We had to provision the stack manually via SSH.
+
+*   **Stack Installation:** We installed `nginx`, `software-properties-common`, and `composer`.
+*   **Problem 3: PHP Version Mismatch (Laravel 13):** During the first Jenkins Pipeline run, the build failed at the Composer stage.
+    *   *Diagnosis:* The Jenkins logs showed `laravel/framework ^13.8 requires php ^8.3`. We had installed PHP 8.2.
+    *   *Fix:* We SSH'd back in and executed a full upgrade to PHP 8.3 (`php8.3-fpm`, `php8.3-cli`, `php8.3-xml`, etc.). We then ran `sudo update-alternatives --set php /usr/bin/php8.3` to force Composer to use the new engine.
+
+---
+
+## 6. Phase 5: Pipeline as Code (Jenkinsfile)
+We authored a Declarative `Jenkinsfile` stored directly in GitHub to automate the entire deployment lifecycle:
+1.  **Checkout:** Pulls `main` branch from GitHub.
+2.  **Install PHP Dependencies:** Runs `composer install --no-dev`.
+3.  **Deploy Files:** Copies the Jenkins workspace into `/var/www/laravel`.
+4.  **Configure Web Server:** Copies our custom `laravel.conf` into `/etc/nginx/sites-available`, symlinks it to `sites-enabled`, and deletes the default Nginx splash page. We explicitly updated `fastcgi_pass` to point to the new `unix:/var/run/php/php8.3-fpm.sock`.
+5.  **Set Permissions & Restart Daemons:** Locks down directory ownership to `www-data`, ensures the `storage` and `bootstrap/cache` directories are writable, and restarts `nginx` and `php8.3-fpm`.
+
+---
+
+## 7. Phase 6: Database Finalization
+After Jenkins successfully deployed the application, visiting the server IP resulted in a Laravel `500 Internal Server Error`.
+
+*   **Problem 4: Missing Database & Driver:** Laravel reported `Database file at path [/var/www/laravel/database/database.sqlite] does not exist`. After creating the file mechanically, `php artisan migrate` failed with `could not find driver`.
+    *   *Diagnosis:* Laravel 13 defaults to SQLite, but we hadn't installed the SQLite PHP extension (only MySQL).
+    *   *Fix:* We ran `sudo touch` to create the database, changed ownership to `www-data`, installed `php8.3-sqlite3`, restarted the PHP-FPM daemon, and successfully executed the migrations.
+
+---
+
+## 8. Conclusion
+We successfully delivered a highly robust, production-ready environment. The application is live, Nginx is reverse-proxying traffic perfectly to the PHP 8.3 FPM socket, and every push to GitHub triggers an automated Jenkins pipeline that handles dependencies, permissions, and daemon recycling without human intervention. 
+
+By manually resolving GPG keys, JVM crashes, PHP versioning mismatches, and SQLite driver dependencies, this project thoroughly demonstrates deep technical ownership over Linux systems administration and Cloud DevOps mechanics.
