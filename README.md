@@ -1,38 +1,82 @@
-# 🚀 Node.js DevOps Deployment Pipeline
+# 🚀 AWS DevOps 3-Tier Architecture Assessment
 
-This repository contains a modern Node.js 3-tier application designed for a production AWS deployment, meeting the updated DevOps Engineering Technical Assessment criteria.
+![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![Jenkins](https://img.shields.io/badge/jenkins-%232C5263.svg?style=for-the-badge&logo=jenkins&logoColor=white)
+![MySQL](https://img.shields.io/badge/mysql-%2300f.svg?style=for-the-badge&logo=mysql&logoColor=white)
 
-## 🌟 Key Features
-- **Node.js (Express)** backend instead of Laravel.
-- **Direct EC2 Deployment** via automated **Jenkins CI/CD** (No Containers).
-- **AWS Secrets Manager** integration for securing database credentials.
-- **Amazon S3** integration to fetch and display image assets using dynamic pre-signed URLs.
-- **Modern Glassmorphism UI** with a dark-mode theme, utilizing asynchronous JavaScript for smooth UX.
-- **Nginx Reverse Proxy** routing traffic via a custom Domain Name.
+## Overview
+This repository contains the infrastructure configuration, CI/CD pipeline, and application code for a production-grade 3-Tier web architecture deployed entirely on AWS.
 
-## 🏗 Architecture Diagram
+The backend has been completely replatformed to **Node.js / Express**, featuring a custom glassmorphism UI, secure database integration via **AWS Secrets Manager**, and direct file uploads to **AWS S3** using presigned URLs. The deployment is fully automated using a dedicated **Jenkins EC2** server communicating securely over SSH to an **App EC2** target.
+
+---
+
+## 🏗️ Architecture Diagram
 
 ```mermaid
 graph TD
-    User([End User]) -->|HTTP/HTTPS| Domain[Domain Name / Nginx]
-    Domain -->|Proxy Pass 80->3000| EC2[EC2 Instance: Node.js App]
+    User([User / Browser])
+    GitHub([GitHub Repository])
     
     subgraph AWS VPC
-        EC2 -->|Query DB| Secrets[AWS Secrets Manager]
-        Secrets -.->|Injects Creds| EC2
-        EC2 -->|Port 3306| RDS[(AWS RDS: MySQL)]
-        EC2 -->|IAM Role Fetch| S3[(Amazon S3: Images)]
+        subgraph Public Subnet
+            Jenkins[Jenkins EC2 <br/> CI/CD Engine]
+            AppServer[App EC2 <br/> Nginx + Node.js + PM2]
+        end
+        
+        subgraph Private Subnet / Services
+            RDS[(AWS RDS <br/> MySQL 8)]
+            S3[(AWS S3 <br/> Image Storage)]
+            Secrets[AWS Secrets Manager <br/> DB Credentials]
+        end
     end
-    
-    subgraph CI/CD Pipeline
-        Dev([Developer]) -->|Push| GitHub[GitHub Repo (Main Branch)]
-        GitHub -->|Webhook| Jenkins[Jenkins CI/CD]
-        Jenkins -->|Deploy & Restart PM2| EC2
-    end
+
+    User -- HTTP :80 --> AppServer
+    GitHub -- Webhook / Push --> Jenkins
+    Jenkins -- SSH / rsync --> AppServer
+    AppServer -- Fetch Secrets --> Secrets
+    AppServer -- Query/Insert --> RDS
+    AppServer -- Presigned URLs / Upload --> S3
 ```
 
-## ⚙️ Deployment Instructions
-1. Push code to the `main` branch.
-2. Jenkins automatically checks out the source code, installs dependencies (`npm install`), and uses `rsync` to move files to `/var/www/node-app`.
-3. Jenkins restarts the Node application via **PM2** and reloads **Nginx**.
-4. Access the web app through the configured domain name. No ALB is required.
+## ✨ Key Features & Technical Decisions
+
+1. **Dual EC2 Compute Tier:** 
+   - **Jenkins Master:** Dedicated to CI/CD. Pulls code, installs dependencies, and deploys via SSH.
+   - **App Target:** Runs Nginx (Reverse Proxy) and Node.js managed by `pm2` for zero-downtime reloads.
+2. **Zero Hardcoded Secrets:** DB credentials are dynamically fetched at runtime using `@aws-sdk/client-secrets-manager`.
+3. **Stateless Node Application:** The application uses `multer` memory storage to immediately stream uploaded images to AWS S3, ensuring the App EC2 remains completely stateless.
+4. **IAM Role Authentication:** EC2 instances securely interact with Secrets Manager and S3 using attached IAM roles (`EC2-CodeDeploy-Role`), avoiding exposed AWS access keys.
+
+---
+
+## 🛠️ Detailed Walkthrough
+
+### Step 1: AWS Infrastructure Setup
+1. **EC2 Instances:** Provisioned two Ubuntu 24.04 instances (`Jenkins` and `AppServer`).
+2. **Security Groups:** 
+   - `AppServer`: Port 80 (HTTP) open to the world. Port 22 (SSH) open to Jenkins and admin IP.
+   - `RDS`: Port 3306 (MySQL) open ONLY to the `AppServer` Security Group.
+3. **AWS RDS:** Provisioned a MySQL instance.
+4. **AWS S3:** Created a private bucket for media storage.
+5. **Secrets Manager:** Stored RDS endpoint, username, and password in a secret named `assessment-db-secret`.
+6. **IAM Roles:** Created `EC2-CodeDeploy-Role` with an inline policy allowing `s3:*` and `secretsmanager:GetSecretValue`. Attached this role to the App EC2.
+
+### Step 2: Jenkins Configuration
+1. Installed **Java 21** and Jenkins on the Jenkins EC2.
+2. Generated an SSH keypair on Jenkins and injected the public key into the App EC2's `~/.ssh/authorized_keys`.
+3. Added the private key to Jenkins Credentials as `app-ec2-ssh-key`.
+4. Configured a GitHub Webhook to automatically trigger builds on `git push`.
+
+### Step 3: CI/CD Pipeline Execution
+The `Jenkinsfile` orchestrates the fully automated flow:
+1. **Checkout:** Pulls latest Node.js code from GitHub.
+2. **Sync:** Uses `rsync` over SSH to push the code to the App EC2 (`/var/www/node-app`).
+3. **Install:** Executes `npm install --production` remotely.
+4. **Configure:** Moves `nginx.conf` into `/etc/nginx` and reloads the Nginx service.
+5. **Restart:** Uses `pm2 restart node-app` to seamlessly reboot the application.
+
+### Step 4: Verification
+- Accessing the App EC2's public IP loads the beautiful Glassmorphism UI.
+- Submitting a new record fetches secrets, connects to RDS, inserts data, and uploads images to S3!
