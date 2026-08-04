@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Assessment — Node.js on AWS</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>Data Dashboard</h1>
+            <p>Node.js · AWS RDS · S3 · Secrets Manager</p>
+        </header>
+
+        <main class="grid-layout">
+            <!-- Add Record -->
+            <section class="card glass-effect">
+                <h2>Add New Record</h2>
+                <form id="add-form">
+                    <div class="input-group">
+                        <label for="title">Title</label>
+                        <input type="text" id="title" placeholder="Enter title..." required>
+                    </div>
+                    <div class="input-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" placeholder="Enter description..." required></textarea>
+                    </div>
+                    <div class="button-group">
+                        <button type="submit" class="btn primary" id="add-btn">Add Record</button>
+                        <button type="button" id="list-btn" class="btn secondary">List Records</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- DB Records -->
+            <section class="card glass-effect list-section">
+                <h2>Database Records</h2>
+                <div id="records-container">
+                    <p class="empty-state">Click 'List Records' to load data.</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Upload & Gallery -->
+        <section class="card glass-effect s3-gallery">
+            <h2>S3 Image Gallery</h2>
+            <div class="gallery-controls">
+                <!-- Upload -->
+                <form id="upload-form" class="upload-form">
+                    <label for="image-input" class="file-label">
+                        <span id="file-label-text">📎 Choose Image</span>
+                        <input type="file" id="image-input" accept="image/*" required>
+                    </label>
+                    <button type="submit" class="btn primary" id="upload-btn">Upload to S3</button>
+                    <button type="button" id="load-images-btn" class="btn secondary">Load S3 Images</button>
+                </form>
+            </div>
+            <div id="status-msg"></div>
+            <div id="images-container" class="gallery-grid"></div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
